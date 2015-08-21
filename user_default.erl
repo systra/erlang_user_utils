@@ -90,7 +90,15 @@ dbg(c) -> dbg:stop_clear();
 dbg(M) -> dbge({M, '_', '_'}, []).
 
 dbg(c, MSec) when is_number(MSec) ->
-    spawn(fun() -> timer:sleep(MSec), dbg:stop_clear(), io:format("debugging has been disabled~n") end),
+    spawn(fun() -> 
+                  timer:sleep(MSec), 
+                  case dbg:get_tracer() of
+                      {ok, _} ->
+                          dbg:stop_clear(),
+                          io:format("debugging has been disabled~n");
+                      _ -> ok
+                  end
+          end),
     ok;
 dbg(M, c) -> dbgc({M, '_', '_'});
 dbg(M, r) -> dbge({M, '_', '_'}, dbg_rt());
