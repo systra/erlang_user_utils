@@ -7,7 +7,7 @@
 
 -export([help/0,
          dbg/1, dbg/2, dbg/3, dbg/4, dbgo/0, dbgt/1,
-         p/1, lib_path/0, dmfa/3,
+         p/1, dmfa/3,
          l/0, nl/0, mm/0,
          tc/2, tc/4]).
 
@@ -28,7 +28,6 @@ help() ->
     format("dbg(M, F, A, O) -- trace on function M:F(A) with options O\n"),
     format("dbgo()          -- print debugging options help\n"),
     format("dbgt(File)      -- print trace data read from File\n"),
-    format("lib_path()      -- print lib path\n"),
     format("p(Term)         -- print term using io:format(\"\~s\", [Term])\n",["~p~n"]),
     format("l()             -- load all changed modules\n"),
     format("nl()            -- load all changed modules on all known nodes\n"),
@@ -90,8 +89,8 @@ dbg(c) -> dbg:stop_clear();
 dbg(M) -> dbge({M, '_', '_'}, []).
 
 dbg(c, MSec) when is_number(MSec) ->
-    spawn(fun() -> 
-                  timer:sleep(MSec), 
+    spawn(fun() ->
+                  timer:sleep(MSec),
                   case dbg:get_tracer() of
                       {ok, _} ->
                           dbg:stop_clear(),
@@ -181,10 +180,6 @@ call(N, X, M, F, A, Time1) ->
 return(N, Res, Time1, Time2) ->
     Int   = timer:now_diff(Time2, Time1),
     {Int, Int / N, Res}.
-
-lib_path() ->
-    KernAppPath = code:where_is_file("kernel.app"),
-    string:substr(KernAppPath, 1, string:str(KernAppPath,"kernel") - 1).
 
 modified_modules() ->
     [M || {M, _} <-  code:all_loaded(), module_modified(M) == true].
