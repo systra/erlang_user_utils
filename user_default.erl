@@ -145,16 +145,23 @@ dbgc(MFA) ->
     dbg:ctp(MFA).
 
 dbge(MFA, O) ->
-    {ok, _} = dbg:tracer(),
+    start_tracer(),
     dbg:p(all, call),
     dbg:tp(MFA, O).
 
 dbgl(MFA, O) ->
-    {ok, _} = dbg:tracer(),
+    start_tracer(),
     dbg:p(all, call),
     dbg:tpl(MFA, O).
 
 dbg_rt() -> cx.
+
+start_tracer() ->
+    case dbg:tracer() of
+        {ok, _} -> ok;
+        {error, already_started} -> ok;
+        E -> E
+end.
 
 time_it(F) ->
     Pid  = spawn_opt(F, [{min_heap_size, 16384}]),
