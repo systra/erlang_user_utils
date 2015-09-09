@@ -32,7 +32,7 @@ help() ->
     format("l()             -- load all changed modules\n"),
     format("nl()            -- load all changed modules on all known nodes\n"),
     format("mm()            -- list modified modules\n"),
-    format("dmfa()          -- run M:F(A1,...,An) on all visible nodes\n"),
+    format("dmfa(M, F, A)   -- run M:F(A) on all visible nodes\n"),
     format("tc(N, M, F, A)  -- evaluate M:F(A) N times and return {TotalMicSecs, MicSecs/call, Result}\n"),
     format("tc(N, F)        -- evaluate F N times and return {MicSecs, MicSecs/call, Result}\n"),
     ok.
@@ -130,16 +130,16 @@ dbg(M, F, A, O) -> dbge({M, F, A}, O).
 p(Term) ->
     io:format("~p~n", [Term]).
 
-dmfa(M, F, As) ->
+dmfa(M, F, A) ->
     Nodes = nodes(),
     case Nodes of
-    [] ->
-        apply(M, F, As);
-    _ ->
-        rpc:multicall(M, F, As)
+        [] ->
+            apply(M, F, A);
+        _ ->
+            rpc:multicall(M, F, A)
     end.
 
-%--- Private Functions
+%--- Debugging Functions
 
 dbgc(MFA) ->
     dbg:ctp(MFA).
