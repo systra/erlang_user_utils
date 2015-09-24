@@ -9,6 +9,7 @@
          dbg/1, dbg/2, dbg/3, dbg/4, dbgo/0, dbgt/1,
          p/1, dmfa/3,
          l/0, nl/0, mm/0,
+         mk/0,
          tc/2, tc/4]).
 
 -import(io, [format/1, format/2]).
@@ -32,6 +33,7 @@ help() ->
     format("l()             -- load all changed modules\n"),
     format("nl()            -- load all changed modules on all known nodes\n"),
     format("mm()            -- list modified modules\n"),
+    format("mk()            -- compile all modules specified in Emakefile or current dir\n"),
     format("dmfa(M, F, A)   -- run M:F(A) on all visible nodes\n"),
     format("tc(N, M, F, A)  -- evaluate M:F(A) N times and return {TotalMicSecs, MicSecs/call, Result}\n"),
     format("tc(N, F)        -- evaluate F N times and return {MicSecs, MicSecs/call, Result}\n"),
@@ -72,6 +74,9 @@ nl() ->
 
 mm() ->
     modified_modules().
+
+mk() ->
+    up_to_date = make:all([load]).
 
 %--- Benchmarking -------------------------------------------------------------
 

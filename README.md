@@ -35,6 +35,7 @@ The options for debugging are:
     l()                 % load all changed modules on current node
     nl()                % load all changed modules on all known nodes
     mm()                % list modified modules
+    mk()                % compile modules specified by Emakefile (if exists) or in current directory
     dmfa()              % run M:F(A1,...,An) on all visible nodes
 
 ### Building and installation
