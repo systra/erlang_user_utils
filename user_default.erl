@@ -10,6 +10,7 @@
          p/1, dmfa/3,
          l/0, nl/0, mm/0,
          mk/0,
+         reloader/0,
          tc/2, tc/4]).
 
 -import(io, [format/1, format/2]).
@@ -18,7 +19,7 @@
 
 help() ->
     shell_default:help(),
-    format("** user extended commands **~n"),
+    format("~n** commands from module ~s (user helpers) **~n~n", [?MODULE]),
     format("dbg(c)          -- clear all traces = stop tracing\n"),
     format("dbg(M)          -- trace on module M\n"),
     format("dbg(c, T)       -- schedule clearing all traces after T msec\n"),
@@ -37,6 +38,7 @@ help() ->
     format("dmfa(M, F, A)   -- run M:F(A) on all visible nodes\n"),
     format("tc(N, M, F, A)  -- evaluate M:F(A) N times and return {TotalMicSecs, MicSecs/call, Result}\n"),
     format("tc(N, F)        -- evaluate F N times and return {MicSecs, MicSecs/call, Result}\n"),
+    format("reloader()      -- run code reloader\n"),
     ok.
 
 dbgo() ->
@@ -135,6 +137,8 @@ dbg(M, F, A, O) -> dbge({M, F, A}, O).
 p(Term) ->
     io:format("~p~n", [Term]).
 
+reloader() -> sync:go().
+
 dmfa(M, F, A) ->
     Nodes = nodes(),
     case Nodes of
@@ -166,7 +170,7 @@ start_tracer() ->
         {ok, _} -> ok;
         {error, already_started} -> ok;
         E -> E
-end.
+    end.
 
 time_it(F) ->
     Pid  = spawn_opt(F, [{min_heap_size, 16384}]),
