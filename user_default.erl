@@ -11,7 +11,7 @@
          l/0, nl/0, mm/0,
          mk/0,
          reloader/0,
-         tc/2, tc/4]).
+         tc/2, tc/4, tca/2, tca/4]).
 
 -import(io, [format/1, format/2]).
 
@@ -38,6 +38,8 @@ help() ->
     format("dmfa(M, F, A)   -- run M:F(A) on all visible nodes\n"),
     format("tc(N, M, F, A)  -- evaluate M:F(A) N times and return {TotalMicSecs, MicSecs/call, Result}\n"),
     format("tc(N, F)        -- evaluate F N times and return {MicSecs, MicSecs/call, Result}\n"),
+    format("tca(N, M, F, A) -- evaluate M:F(A) N times and print: Min, Max, Med, Avg\n"),
+    format("tca(N, F)       -- evaluate F N times and print: Min, Max, Med, Avg\n"),
     format("reloader()      -- run code reloader\n"),
     ok.
 
@@ -82,11 +84,37 @@ mk() ->
 
 %--- Benchmarking -------------------------------------------------------------
 
-tc(N, F) when N > 0 ->
+tc(N, F) when N > 0, is_function(F) ->
     time_it(fun() -> exit(call(N, N, F, erlang:now())) end).
 
-tc(N, M, F, A) when N > 0 ->
+tc(N, M, F, A) when N > 0, is_atom(M), is_atom(F), is_list(A) ->
     time_it(fun() -> exit(call(N, N, M, F, A, erlang:now())) end).
+
+tca(N, F) when N > 0, is_function(F) ->
+    print_tca_result(tc_loop(F, N, [])).
+
+tca(N, M, F, A) when N > 0, is_atom(M), is_atom(F), is_list(A) ->
+    print_tca_result(tc_loop(M, F, A, N, [])).
+
+print_tca_result(L) ->
+    % L0 = tl(lists:reverse(L)),
+    case code:ensure_loaded(bear) of
+        {module, bear} ->
+            % use bear for stats
+            bear:get_statistics(L);
+        _ ->
+            % calc stats manually
+            Length = length(L),
+            Min = lists:min(L),
+            Max = lists:max(L),
+            Med = lists:nth(round((Length / 2)), lists:sort(L)),
+            Avg = lists:foldl(fun(X, Sum) -> X + Sum end, 0, L) / Length,
+            [{min, Min},
+             {max, Max},
+             {arithmetic_mean, Avg},
+             {median, Med},
+             {n, Length}]
+    end.
 
 %--- Debugging
 
@@ -128,6 +156,7 @@ dbg(M, F, A, O) -> dbge({M, F, A}, O).
 
 % dbgf(Module, File) when is_list(File) ->
 %     {ok,_} = dbg:tracer(port, dbg:trace_port(file, File)),
+%     dbg:tracer(port,dbg:trace_port(file,{"/log/trace",wrap,atom_to_list(node()),50000000,12})). % 12x50MB
 %     dbg:p(all, [call, running, garbage_collection, timestamp, return_to]),
 %     dbg:tpl(Module, [{'_', [], [{return_trace}, {exception_trace}]}]),
 %     ok.
@@ -167,10 +196,40 @@ dbg_rt() -> cx.
 
 start_tracer() ->
     case dbg:tracer() of
+    % case dbg:tracer(process, {fun nested_trace/2, 0}) of
         {ok, _} -> ok;
         {error, already_started} -> ok;
         E -> E
     end.
+
+flat_trace({trace, Pid, call, {Mod, Fun, Args}, _}, Level) ->
+    [[91, S, 93]] = io_lib:format("~p", [Args]),
+    SArgs = lists:flatten(S),
+    io:format("DBG ~p CALL :: ~p:~p(~s) :: L#~p~n", [Pid, Mod, Fun, SArgs, Level]),
+    Level + 1;
+flat_trace({trace, Pid, return_from, {_, _, _}, ReturnValue}, Level) ->
+    NewLevel = Level - 1,
+    io:format("DBG ~p RTRN :: ~p :: L#~p~n", [Pid, ReturnValue, NewLevel]),
+    NewLevel;
+flat_trace(Trace, Level) ->
+    io:format("DBG MSG :: ~p :: L#~p~n", [Trace, Level]),
+    Level.
+
+nested_trace({trace, Pid, call, {Mod, Fun, Args}, _}, Level) ->
+    [[91, S, 93]] = io_lib:format("~p", [Args]),
+    SArgs = lists:flatten(S),
+    io:format("DBG ~p CALL :: ~s~p:~p(~s)~n", [Pid, filler(Level), Mod, Fun, SArgs]),
+    Level + 1;
+nested_trace({trace, Pid, return_from, {_, _, _}, ReturnValue}, Level) ->
+    NewLevel = Level - 1,
+    io:format("DBG ~p RTRN :: ~s~p~n", [Pid, filler(NewLevel), ReturnValue]),
+    NewLevel;
+nested_trace(Trace, Level) ->
+    io:format("DBG msg :: ~p~n", [Trace]),
+    Level.
+
+filler(Level) ->
+    string:copies("| ", Level).
 
 time_it(F) ->
     Pid  = spawn_opt(F, [{min_heap_size, 16384}]),
@@ -194,8 +253,10 @@ call(N, X, M, F, A, Time1) ->
     call(N-1, X, M, F, A, Time1).
 
 return(N, Res, Time1, Time2) ->
-    Int   = timer:now_diff(Time2, Time1),
-    {Int, Int / N, Res}.
+    Int = timer:now_diff(Time2, Time1),
+    [{total, Int},
+     {arithmetic_mean, Int / N},
+     {last_result, Res}].
 
 modified_modules() ->
     [M || {M, _} <-  code:all_loaded(), module_modified(M) == true].
@@ -237,4 +298,20 @@ find_module_file(Path) ->
                 NewPath ->
                     NewPath
             end
+    end.
+
+tc_loop(_F, 0, List) ->
+    List;
+tc_loop(F, N, List) ->
+    case timer:tc(F) of
+        {_T, {'EXIT', Reason}} -> exit(Reason);
+        {T, _Result} -> tc_loop(F, N - 1, [T|List])
+    end.
+
+tc_loop(_M, _F, _A, 0, List) ->
+    List;
+tc_loop(M, F, A, N, List) ->
+    case timer:tc(M, F, A) of
+        {_T, {'EXIT', Reason}} -> exit(Reason);
+        {T, _Result} -> tc_loop(M, F, A, N - 1, [T|List])
     end.
