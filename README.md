@@ -25,8 +25,42 @@ The options for debugging are:
 
 #### Benchmarking helper functions
 
-    tc(N, M, F, A)      % evaluate M:F(A) N times and return {TotalMicSecs, MicSecs/call, Result}
-    tc(N, F)            % evaluate F N times and return {MicSecs, MicSecs/call, Result}
+    tc(N, F)            % evaluate F N times and return same result as function tc(N, M, F, A)
+    tc(N, M, F, A)      % evaluate M:F(A) N times and return [{total, <total run time>},
+                                                              {arithmetic_mean, <mean>},
+                                                              {last_result, <result>}]
+
+    tca(N, F)           % evaluate F N times and return same result as function tca(N, M, F, A)
+    tca(N, M, F, A)     % evaluate M:F(A) N times and return stats as below:
+    
+                        (if you have bear library in the ERL_LIB path)
+                        
+                        [{min,10137},
+                         {max,12630},
+                         {arithmetic_mean,11537.6},
+                         {geometric_mean,11516.435993993891},
+                         {harmonic_mean,11494.89018688898},
+                         {median,11374},
+                         {variance,532961.6000000001},
+                         {standard_deviation,730.0421905616141},
+                         {skewness,-0.30488239045264337},
+                         {kurtosis,-0.9594953873072507},
+                         {percentile,[{50,11374},
+                                      {75,12114},
+                                      {90,12230},
+                                      {95,12630},
+                                      {99,12630},
+                                      {999,12630}]},
+                         {histogram,[{11337,4},{12537,5},{14137,1}]},
+                         {n,10}]
+                         
+                     (or simplier form if bear library is not available)
+                        
+                        [{min,10137},
+                         {max,12630},
+                         {arithmetic_mean,11537.6},
+                         {median,11374},
+                         {n,10}]
 
 
 #### Other helper functions
@@ -37,6 +71,7 @@ The options for debugging are:
     mm()                % list modified modules
     mk()                % compile modules specified by Emakefile (if exists) or in current directory
     dmfa()              % run M:F(A1,...,An) on all visible nodes
+    decompile(M)        % decompile module or beam file
 
 ### Building and installation
 
