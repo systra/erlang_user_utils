@@ -10,7 +10,7 @@
          p/1, dmfa/3,
          l/0, nl/0, mm/0,
          mk/0,
-         reloader/0,
+         decompile/1, reloader/0,
          tc/2, tc/4, tca/2, tca/4]).
 
 -import(io, [format/1, format/2]).
@@ -36,10 +36,11 @@ help() ->
     format("mm()            -- list modified modules\n"),
     format("mk()            -- compile all modules specified in Emakefile or current dir\n"),
     format("dmfa(M, F, A)   -- run M:F(A) on all visible nodes\n"),
-    format("tc(N, M, F, A)  -- evaluate M:F(A) N times and return {TotalMicSecs, MicSecs/call, Result}\n"),
-    format("tc(N, F)        -- evaluate F N times and return {MicSecs, MicSecs/call, Result}\n"),
-    format("tca(N, M, F, A) -- evaluate M:F(A) N times and print: Min, Max, Med, Avg\n"),
-    format("tca(N, F)       -- evaluate F N times and print: Min, Max, Med, Avg\n"),
+    format("tc(N, M, F, A)  -- evaluate M:F(A) N times\n"),
+    format("tc(N, F)        -- evaluate F N times\n"),
+    format("tca(N, M, F, A) -- evaluate M:F(A) N times and calculate stats\n"),
+    format("tca(N, F)       -- evaluate F N times and calculate stats\n"),
+    format("decompile(Beam) -- print source code of the file beam (if available)\n"),
     format("reloader()      -- run code reloader\n"),
     ok.
 
@@ -167,6 +168,17 @@ p(Term) ->
     io:format("~p~n", [Term]).
 
 reloader() -> sync:go().
+
+decompile(Beam) when is_list(Beam); is_atom(Beam) ->
+    case get_abstract_code(Beam) of
+        {ok, _Module, _Basename, Forms} ->
+            io:fwrite("~s~n", [erl_prettypr:format(erl_syntax:form_list(Forms))]);
+        {ok, {_, [{abstract_code, no_abstract_code}]}} ->
+            io:format("Error: file ~s has no abstract code!\n", [Beam]),
+            {error, no_abstract_code};
+        Error ->
+            Error
+    end.
 
 dmfa(M, F, A) ->
     Nodes = nodes(),
@@ -314,4 +326,20 @@ tc_loop(M, F, A, N, List) ->
     case timer:tc(M, F, A) of
         {_T, {'EXIT', Reason}} -> exit(Reason);
         {T, _Result} -> tc_loop(M, F, A, N - 1, [T|List])
+    end.
+
+get_abstract_code(Module) when is_atom(Module) ->
+    case code:ensure_loaded(Module) of
+        {module, _} ->
+            Beam = code:which(Module),
+            get_abstract_code(Beam);
+        Error -> Error
+    end;
+get_abstract_code(Beam) when is_list(Beam) ->
+    Basename = filename:basename(Beam, ".beam"),
+    case beam_lib:chunks(Beam, [abstract_code]) of
+        {ok, {Module, [{abstract_code, {_, AC}}]}} ->
+            {ok, Module, Basename, AC};
+        Other ->
+            Other
     end.
