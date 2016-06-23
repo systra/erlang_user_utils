@@ -121,6 +121,8 @@ print_tca_result(L) ->
 
 % Modified version of: https://github.com/eproxus/erlang_user_utilities/blob/master/user_default.erl
 
+dbg(f) -> start_tracer(flat);
+dbg(n) -> start_tracer(nested);
 dbg(c) -> dbg:stop_clear();
 dbg(M) -> dbge({M, '_', '_'}, []).
 
@@ -207,12 +209,21 @@ dbgl(MFA, O) ->
 dbg_rt() -> cx.
 
 start_tracer() ->
-    case dbg:tracer() of
-    % case dbg:tracer(process, {fun nested_trace/2, 0}) of
+    start_tracer(regular).
+
+start_tracer(Type) ->
+    case do_start_tracer(Type) of
         {ok, _} -> ok;
         {error, already_started} -> ok;
         E -> E
     end.
+
+do_start_tracer(flat) ->
+    dbg:tracer(process, {fun flat_trace/2, 0});
+do_start_tracer(nested) ->
+    dbg:tracer(process, {fun nested_trace/2, 0});
+do_start_tracer(_) ->
+    dbg:tracer().
 
 flat_trace({trace, Pid, call, {Mod, Fun, Args}, _}, Level) ->
     [[91, S, 93]] = io_lib:format("~p", [Args]),
