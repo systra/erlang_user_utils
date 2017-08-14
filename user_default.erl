@@ -11,6 +11,7 @@
          l/0, nl/0, mm/0,
          mk/0,
          decompile/1, reloader/0,
+         hexstr2bin/1, bin2hexstr/1,
          tc/2, tc/4, tca/2, tca/4]).
 
 -import(io, [format/1, format/2]).
@@ -40,6 +41,8 @@ help() ->
     format("tc(N, F)        -- evaluate F N times\n"),
     format("tca(N, M, F, A) -- evaluate M:F(A) N times and calculate stats\n"),
     format("tca(N, F)       -- evaluate F N times and calculate stats\n"),
+    format("hexstr2bin(Hex) -- converts HEX string to binary\n"),
+    format("bin2hexstr(Bin) -- converts binary to HEX string\n"),
     format("decompile(Beam) -- print source code of the file beam (if available)\n"),
     format("reloader()      -- run code reloader\n"),
     ok.
@@ -53,18 +56,17 @@ dbgo() ->
     ok.
 
 dbgt(File) ->
-    Fun = fun({trace, _, call, {M, F, A}}, _) -> io:format("call: ~w:~w~w~n", [M,F,A]);
-             ({trace, _, return_from, {M, F, A}, R}, _) -> io:format("retn: ~w:~w/~w -> ~w~n", [M,F,A,R]);
-             (A,B) -> io:format("~w: ~w~n", [A,B]) end,
+    Fun = fun({trace, _, call, {M, F, A}}, _) -> io:format(user, "call: ~w:~w~w~n", [M,F,A]);
+             ({trace, _, return_from, {M, F, A}, R}, _) -> io:format(user, "retn: ~w:~w/~w -> ~w~n", [M,F,A,R]);
+             (A,B) -> io:format(user, "~w: ~w~n", [A, B]) end,
     dbg:trace_client(file, File, {Fun, []}).
-
 
 %--- Code Reload
 
 l() ->
     lists:foreach(
       fun(M) ->
-              io:format("Loading ~p -> ~p~n", [M, c:l(M)])
+              io:format(user, "Loading ~p -> ~p~n", [M, c:l(M)])
       end,
       mm()
      ).
@@ -72,7 +74,7 @@ l() ->
 nl() ->
     lists:foreach(
       fun(M) ->
-              io:format("Network loading ~p -> ~p~n", [M, c:nl(M)])
+              io:format(user, "Network loading ~p -> ~p~n", [M, c:nl(M)])
       end,
       mm()
      ).
@@ -121,18 +123,20 @@ print_tca_result(L) ->
 
 % Modified version of: https://github.com/eproxus/erlang_user_utilities/blob/master/user_default.erl
 
+dbg(t) -> start_tracer(test);
 dbg(f) -> start_tracer(flat);
 dbg(n) -> start_tracer(nested);
 dbg(c) -> dbg:stop_clear();
 dbg(M) -> dbge({M, '_', '_'}, []).
 
+dbg(x, File) -> {ok, _} = dbg:tracer(port, dbg:trace_port(file, File));
 dbg(c, MSec) when is_number(MSec) ->
     spawn(fun() ->
                   timer:sleep(MSec),
                   case dbg:get_tracer() of
                       {ok, _} ->
                           dbg:stop_clear(),
-                          io:format("debugging has been disabled~n");
+                          io:format(user, "debugging has been disabled~n", []);
                       _ -> ok
                   end
           end),
@@ -157,17 +161,10 @@ dbg(M, F, A, l) -> dbgl({M, F, A}, dbg_rt());
 dbg(M, F, A, lr) -> dbgl({M, F, A}, dbg_rt());
 dbg(M, F, A, O) -> dbge({M, F, A}, O).
 
-% dbgf(Module, File) when is_list(File) ->
-%     {ok,_} = dbg:tracer(port, dbg:trace_port(file, File)),
-%     dbg:tracer(port,dbg:trace_port(file,{"/log/trace",wrap,atom_to_list(node()),50000000,12})). % 12x50MB
-%     dbg:p(all, [call, running, garbage_collection, timestamp, return_to]),
-%     dbg:tpl(Module, [{'_', [], [{return_trace}, {exception_trace}]}]),
-%     ok.
-
 %--- Other
 
 p(Term) ->
-    io:format("~p~n", [Term]).
+    io:format(user, "~p~n", [Term]).
 
 reloader() -> sync:go().
 
@@ -176,7 +173,7 @@ decompile(Beam) when is_list(Beam); is_atom(Beam) ->
         {ok, _Module, _Basename, Forms} ->
             io:fwrite("~s~n", [erl_prettypr:format(erl_syntax:form_list(Forms))]);
         {ok, {_, [{abstract_code, no_abstract_code}]}} ->
-            io:format("Error: file ~s has no abstract code!\n", [Beam]),
+            io:format(user, "Error: file ~s has no abstract code!\n", [Beam]),
             {error, no_abstract_code};
         Error ->
             Error
@@ -218,6 +215,8 @@ start_tracer(Type) ->
         E -> E
     end.
 
+do_start_tracer(test) ->
+    dbg:tracer(process, {fun test_trace/2, 0});
 do_start_tracer(flat) ->
     dbg:tracer(process, {fun flat_trace/2, 0});
 do_start_tracer(nested) ->
@@ -225,30 +224,47 @@ do_start_tracer(nested) ->
 do_start_tracer(_) ->
     dbg:tracer().
 
+test_trace(Trace, Level) ->
+    Info = trace_format(Trace),
+    io:format(user, "~s", [Info]),
+    Level.
+
+flat_trace({trace, Pid, call, {Mod, Fun, Args}}, Level) ->
+    io:format(user, "Args: ~p", [Args]),
+    % [[91, S, 93]] = io_lib:format("~p", [Args]),
+    S = Args,
+    SArgs = lists:flatten(S),
+    io:format(user, "DBG ~p CALL :: ~p:~p(~s) :: L#~p~n", [Pid, Mod, Fun, SArgs, Level]),
+    Level + 1;
 flat_trace({trace, Pid, call, {Mod, Fun, Args}, _}, Level) ->
     [[91, S, 93]] = io_lib:format("~p", [Args]),
     SArgs = lists:flatten(S),
-    io:format("DBG ~p CALL :: ~p:~p(~s) :: L#~p~n", [Pid, Mod, Fun, SArgs, Level]),
+    io:format(user, "DBG ~p CALL :: ~p:~p(~s) :: L#~p~n", [Pid, Mod, Fun, SArgs, Level]),
     Level + 1;
 flat_trace({trace, Pid, return_from, {_, _, _}, ReturnValue}, Level) ->
     NewLevel = Level - 1,
-    io:format("DBG ~p RTRN :: ~p :: L#~p~n", [Pid, ReturnValue, NewLevel]),
+    io:format(user, "DBG ~p RTRN :: ~p :: L#~p~n", [Pid, ReturnValue, NewLevel]),
     NewLevel;
 flat_trace(Trace, Level) ->
-    io:format("DBG MSG :: ~p :: L#~p~n", [Trace, Level]),
+    io:format(user, "DBG MSG :: ~p :: L#~p~n", [Trace, Level]),
     Level.
 
+nested_trace({trace, Pid, call, {Mod, Fun, Args}}, Level) ->
+    [[91, S, 93]] = io_lib:format("~p", [Args]),
+    SArgs = lists:flatten(S),
+    io:format(user, "DBG ~p CALL :: ~s~p:~p(~s)~n", [Pid, filler(Level), Mod, Fun, SArgs]),
+    Level + 1;
 nested_trace({trace, Pid, call, {Mod, Fun, Args}, _}, Level) ->
     [[91, S, 93]] = io_lib:format("~p", [Args]),
     SArgs = lists:flatten(S),
-    io:format("DBG ~p CALL :: ~s~p:~p(~s)~n", [Pid, filler(Level), Mod, Fun, SArgs]),
+    io:format(user, "DBG ~p CALL :: ~s~p:~p(~s)~n", [Pid, filler(Level), Mod, Fun, SArgs]),
     Level + 1;
 nested_trace({trace, Pid, return_from, {_, _, _}, ReturnValue}, Level) ->
     NewLevel = Level - 1,
-    io:format("DBG ~p RTRN :: ~s~p~n", [Pid, filler(NewLevel), ReturnValue]),
+    io:format(user, "DBG ~p RTRN :: ~s~p~n", [Pid, filler(NewLevel), ReturnValue]),
     NewLevel;
 nested_trace(Trace, Level) ->
-    io:format("DBG msg :: ~p~n", [Trace]),
+    io:format(user, "DBG msg :: ~p~n", [Trace]),
     Level.
 
 filler(Level) ->
@@ -354,3 +370,130 @@ get_abstract_code(Beam) when is_list(Beam) ->
         Other ->
             Other
     end.
+
+%%%%%%%%%%%%%%%%%%%%%%%%
+%%% TRACE FORMATTING %%%
+%%%%%%%%%%%%%%%%%%%%%%%%
+%% Thanks Geoff Cant for the foundations for this.
+
+trace_format(TraceMsg) ->
+    {Type, Pid, {Hour,Min,Sec}, TraceInfo} = extract_info(TraceMsg),
+    {FormatStr, FormatArgs} = case {Type, TraceInfo} of
+        %% {trace, Pid, 'receive', Msg}
+        {'receive', [Msg]} ->
+            {"< ~p", [Msg]};
+        %% {trace, Pid, send, Msg, To}
+        {send, [Msg, To]} ->
+            {" > ~p: ~p", [To, Msg]};
+        %% {trace, Pid, send_to_non_existing_process, Msg, To}
+        {send_to_non_existing_process, [Msg, To]} ->
+            {" > (non_existent) ~p: ~p", [To, Msg]};
+        %% {trace, Pid, call, {M, F, Args}}
+        {call, [{M,F,Args}]} ->
+            {"~p:~p~s", [M,F,format_args(Args)]};
+        {call, [{M,F,Args}, _]} ->
+            {"~p:~p~s", [M,F,format_args(Args)]};
+        %% {trace, Pid, return_to, {M, F, Arity}}
+        {return_to, [{M,F,Arity}]} ->
+            {" '--> ~p:~p/~p", [M,F,Arity]};
+        %% {trace, Pid, return_from, {M, F, Arity}, ReturnValue}
+        {return_from, [{M,F,Arity}, Return]} ->
+            {"~p:~p/~p --> ~p", [M,F,Arity, Return]};
+        %% {trace, Pid, exception_from, {M, F, Arity}, {Class, Value}}
+        {exception_from, [{M,F,Arity}, {Class,Val}]} ->
+            {"~p:~p/~p ~p ~p", [M,F,Arity, Class, Val]};
+        %% {trace, Pid, spawn, Spawned, {M, F, Args}}
+        {spawn, [Spawned, {M,F,Args}]}  ->
+            {"spawned ~p as ~p:~p~s", [Spawned, M, F, format_args(Args)]};
+        %% {trace, Pid, exit, Reason}
+        {exit, [Reason]} ->
+            {"EXIT ~p", [Reason]};
+        %% {trace, Pid, link, Pid2}
+        {link, [Linked]} ->
+            {"link(~p)", [Linked]};
+        %% {trace, Pid, unlink, Pid2}
+        {unlink, [Linked]} ->
+            {"unlink(~p)", [Linked]};
+        %% {trace, Pid, getting_linked, Pid2}
+        {getting_linked, [Linker]} ->
+            {"getting linked by ~p", [Linker]};
+        %% {trace, Pid, getting_unlinked, Pid2}
+        {getting_unlinked, [Unlinker]} ->
+            {"getting unlinked by ~p", [Unlinker]};
+        %% {trace, Pid, register, RegName}
+        {register, [Name]} ->
+            {"registered as ~p", [Name]};
+        %% {trace, Pid, unregister, RegName}
+        {unregister, [Name]} ->
+            {"no longer registered as ~p", [Name]};
+        %% {trace, Pid, in, {M, F, Arity} | 0}
+        {in, [{M,F,Arity}]} ->
+            {"scheduled in for ~p:~p/~p", [M,F,Arity]};
+        {in, [0]} ->
+            {"scheduled in", []};
+        %% {trace, Pid, out, {M, F, Arity} | 0}
+        {out, [{M,F,Arity}]} ->
+            {"scheduled out from ~p:~p/~p", [M, F, Arity]};
+        {out, [0]} ->
+            {"scheduled out", []};
+        %% {trace, Pid, gc_start, Info}
+        {gc_start, [Info]} ->
+            HeapSize = proplists:get_value(heap_size, Info),
+            OldHeapSize = proplists:get_value(old_heap_size, Info),
+            MbufSize = proplists:get_value(mbuf_size, Info),
+            {"gc beginning -- heap ~p bytes",
+             [HeapSize + OldHeapSize + MbufSize]};
+        %% {trace, Pid, gc_end, Info}
+        {gc_end, [Info]} ->
+            HeapSize = proplists:get_value(heap_size, Info),
+            OldHeapSize = proplists:get_value(old_heap_size, Info),
+            MbufSize = proplists:get_value(mbuf_size, Info),
+            {"gc finished -- heap ~p bytes",
+             [HeapSize + OldHeapSize + MbufSize]};
+        _ ->
+            {"unknown trace type ~p -- ~p", [Type, TraceInfo]}
+    end,
+    io_lib:format("~n~p:~p:~9.6.0f ~p " ++ FormatStr ++ "~n",
+                  [Hour, Min, Sec, Pid] ++ FormatArgs).
+
+extract_info(TraceMsg) ->
+    case tuple_to_list(TraceMsg) of
+        [trace_ts, Pid, Type | Info] ->
+            {TraceInfo, [Timestamp]} = lists:split(length(Info)-1, Info),
+            {Type, Pid, to_hms(Timestamp), TraceInfo};
+        [trace, Pid, Type | TraceInfo] ->
+            {Type, Pid, to_hms(os:timestamp()), TraceInfo}
+    end.
+
+to_hms(Stamp = {_, _, Micro}) ->
+    {_,{H, M, Secs}} = calendar:now_to_local_time(Stamp),
+    Seconds = Secs rem 60 + (Micro / 1000000),
+    {H,M,Seconds};
+to_hms(_) ->
+    {0,0,0}.
+
+format_args(Arity) when is_integer(Arity) ->
+    "/"++integer_to_list(Arity);
+format_args(Args) when is_list(Args) ->
+    "("++string:join([io_lib:format("~p", [Arg]) || Arg <- Args], ", ")++")".
+
+hexstr2bin(S) when is_list(S) ->
+    list_to_binary(hexstr2list(S)).
+
+bin2hexstr(Bin) when is_binary(Bin) ->
+        << <<(hex(H)),(hex(L))>> || <<H:4,L:4>> <= Bin >>.
+
+hex(C) when C < 10 -> $0 + C;
+hex(C) -> $a + C - 10.
+
+hexstr2list([X,Y|T]) ->
+    [mkint(X)*16 + mkint(Y) | hexstr2list(T)];
+hexstr2list([]) ->
+    [].
+
+mkint(C) when $0 =< C, C =< $9 ->
+    C - $0;
+mkint(C) when $A =< C, C =< $F ->
+    C - $A + 10;
+mkint(C) when $a =< C, C =< $f ->
+    C - $a + 10.
